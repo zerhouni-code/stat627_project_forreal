@@ -22,7 +22,6 @@ invisible(lapply(c("tidyverse"), library, character.only=TRUE))
 forestry.all <- read_csv(file = "data/Urban_Forestry_Street_Trees.csv", col_select = c(-36,-37,-40))
 ```
 
-
 ### Dictionary
 
 ```{r}
@@ -37,7 +36,6 @@ forestry.all |> select_if(is.numeric) |> colnames()
 forestry.all |> select_if(is.numeric) -> forestry.numeric
 ```
 
-
 ## Variables
 
 ### DBH
@@ -51,8 +49,6 @@ par(mfrow=c(1,2), bg = "gray40")
 hist(forestry.all |> filter(DBH < 100 & DBH > 0) |> pull(DBH),main = "DBH Histogram", xlab = "Diameter at Breast Height", col = "gray60")
 boxplot(forestry.all |> filter(DBH < 100 & DBH > 0) |> pull(DBH),main = "DBH Boxplot", ylab = "Diameter at Breast Height", col = "gray60")
 ```
-
-
 
 ```{r}
 forestry.all |> filter(DBH < 0)
@@ -148,20 +144,15 @@ forestry.all |>
 colSums(is.na(forestry.all))
 ```
 
-
-
 ```{r}
 forestry.numeric |> select(MBG_WIDTH, MBG_LENGTH) -> forestry.pairs
 cor(forestry.pairs)
 ```
 
-
 ```{r}
 par( bg="gray40", col="gray10")
 plot(forestry.all$X, forestry.all$Y, pch="+")
 ```
-
-
 
 ### New Variable: Longevity
 
@@ -183,6 +174,5 @@ forestry.all |> select(CREATED_DATE) |> distinct()
 ```{r}
 
 ```
-
 
 This variable must exclude the live trees. We don't know how long they will live for because they're still alive.
