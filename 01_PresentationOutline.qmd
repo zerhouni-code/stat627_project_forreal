@@ -1,0 +1,147 @@
+---
+title: "Statistical Machine Learning: DC Urban Forestry"
+subtitle: "Dataset Background, EDA, and Modeling Approaches"
+author: "Tyler Kolmansberger, Zak Zerhouni, Andrew Hwang"
+format: revealjs
+date: today
+---
+
+## Dataset Background: Data Source
+
+```{r}
+#| include: false
+library(tidyverse)
+forestry.all <- read_csv("./01_EDA/data/Urban_Forestry_Street_Trees.csv",
+                         col_select = c(-36, -37, -40))
+n_rows <- nrow(forestry.all)
+n_cols <- ncol(forestry.all)
+dim(forestry.all)
+```
+
+- **Dataset:** DC Urban Forestry Street Trees (`Urban_Forestry_Street_Trees.csv`)
+- **Source:** Open Data DC / DC Urban Forestry Division
+- **Unit of observation:** one street tree (identified by `OBJECTID` / `GLOBALID`)
+- **Size:** 222830 x 47
+
+## Dataset Variables
+
+- **Contents:**
+  - Tree attributes: species (`SCI_NM`, `GENUS_NAME`), size (`DBH`), `CONDITION`
+  - Site attributes: tree box size (`TBOX_L`, `TBOX_W`), `WARD`, `CURB`, `SIDEWALK`, `WIRES`
+  - Lidar-derived crown measurements (2020, in feet): `MBG_WIDTH`, `MBG_LENGTH`, `MAX_MEAN`, `MAX_CROWN_HEIGHT`
+  - Administrative fields: `CREATED_DATE`, `LAST_EDITED_DATE`, `RETIREDDT`
+  - Location: `X`, `Y` coordinates
+
+## Dataset Background: Variables of Interest
+
+- **Possible response:** `CONDITION` (categorical)
+  - Collapse into "good" vs. "bad" for logistic regression
+  - Estimate the probability a tree is in good condition
+- **Numeric predictors:** `DBH`, `TBOX_L`, `TBOX_W`, `MBG_WIDTH`, `MAX_CROWN_HEIGHT`
+- **Categorical predictors:** `GENUS_NAME`, `WARD`, `WIRES`, `CURB`, `SIDEWALK`
+
+## Exploratory Data Analysis: Condition Obstacles
+
+```{r}
+#| include: false
+livetrees <- forestry.all |> filter(RETIREDDT != "NA")
+nrow(livetrees)
+```
+
+- **Retired vs. living trees** (`RETIREDDT`)
+
+  - Splits the data into two populations
+  - Only 5,452 trees have a retirement date
+
+## Missing/Invalid Data
+
+- Several columns have \> 100,000 `NA`s *(list them from the NA table)*
+
+- Missingness for the model variables checked as % missing (`CONDITION`, predictors)
+
+- **Invalid values**
+
+  - Negative `DBH` values present
+  - Extreme `DBH` values \> 100 inches
+  - Extreme `TBOX_L` outlier (one record flagged for review)
+
+- **Cleaning decision:** `DBH` restricted to 0 to 100 for plots, [**decide about modeling**]{.underline}.
+
+```{r}
+#| include: false
+dist_vars <- forestry.all |>
+  filter(DBH > 0, DBH < 100) |>
+  select(DBH, MBG_WIDTH, MBG_LENGTH, MAX_MEAN, MAX_CROWN_HEIGHT, TBOX_L) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "value")
+```
+
+## Exploratory Data Analysis (pt 1): Numeric Variables
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+ggplot(dist_vars, aes(value)) +
+  geom_histogram(bins = 40, na.rm = TRUE) +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal()
+```
+
+## Exploratory Data Analysis (pt 2): Numeric Variables
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+print(
+  ggplot(dist_vars, aes(y = value)) +
+    geom_boxplot(na.rm = TRUE) +
+    facet_wrap(~variable, scales = "free_y") +
+    theme_minimal()
+)
+```
+
+```{r}
+#| echo: false
+plot(1:10)
+```
+
+## Exploratory Data Analysis (pt 1): Relationships and Spatial View
+
+- **Correlation among numeric predictors**
+
+  - `MBG_WIDTH` and `MBG_LENGTH` correlation: \[value from `cor(forestry.pairs)`\]
+  - Collinearity check on `DBH`, `TBOX_L`, `TBOX_W`, `MBG_WIDTH`, `MAX_CROWN_HEIGHT`
+  - `MBG_WIDTH` is the main concern; no other pair above \~0.6
+
+- **Spatial distribution:** `X` vs. `Y` scatter shows tree locations across the city
+
+## Machine Learning Algorithm #1
+
+- **Overview:** *algorithm name + what it does*
+- **Assumptions:**
+- **Why it fits this data:**
+- **Setup / results:**
+
+## Machine Learning Algorithm #2
+
+- **Overview:** *algorithm name + what it does*
+- **Assumptions:**
+- **Why it fits this data:**
+- **Setup / results:**
+
+## Machine Learning Algorithm #3
+
+- **Overview:** *algorithm name + what it does*
+- **Assumptions:**
+- **Why it fits this data:**
+- **Setup / results:**
+
+## Machine Learning Algorithm #4
+
+- **Overview:** *algorithm name + what it does*
+- **Assumptions:**
+- **Why it fits this data:**
+- **Setup / results:**

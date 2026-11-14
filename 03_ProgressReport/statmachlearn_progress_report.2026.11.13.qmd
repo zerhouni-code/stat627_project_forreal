@@ -1,0 +1,247 @@
+---
+title: "Statistical Machine Learning: DC Urban Forestry"
+subtitle: "Exploratory Data Analysis"
+author: "Zak Zerhouni, Andrew Hwang, and Tyler Kolmansberger"
+format: 
+  html:
+    embed-resources: true
+    code-block-bg: "grey"
+    code-block-bg-color: "#f0f0f0"
+    code-block-border-left: "#245634"
+    theme:
+      light: darkly
+      dark: darkly
+    code-overflow: wrap
+date: today
+execute:
+  cache: true
+  echo: false
+  output: false
+  warning: false
+---
+
+# Setup
+
+## Data Source
+
+Our data is retrieved from 
+
+https://opendata.dc.gov/datasets/DCGIS::urban-forestry-street-trees/about
+
+## Loading required packages
+
+```{r}
+#| label: load-library-chunk
+#| output: FALSE
+#| warning: FALSE
+#| echo: TRUE
+invisible(lapply(c("tidyverse", "class", "MASS", "mice"), library, character.only=TRUE))
+```
+
+## Loading the data into the R environment
+
+```{r}
+#| echo: TRUE
+#| label: read-forestry-csv-chunk
+forestry.all <- suppressMessages(invisible(read_csv(file = "../01_EDA/data/Urban_Forestry_Street_Trees.csv", col_select = c(-36,-37,-40))))
+```
+
+## Dictionary
+
+```{r}
+#| echo: TRUE
+#| label: load-dictionary-csv-chunk
+dictionary <- read_csv("../01_EDA/data/forest_dictionary.csv")
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+forestry.all |> mutate(MIN_CROWN_BASE = ifelse(MIN_CROWN_BASE < 0,0,MIN_CROWN_BASE)) -> 
+```
+
+
+```{r, cache=TRUE}
+cleantheforest <- function(data) {
+  data <- data[c(-109328,-206288,-160226),]
+  data |> mutate(MIN_CROWN_BASE = ifelse(MIN_CROWN_BASE < 0,0,MIN_CROWN_BASE)) -> data
+  return(data)
+}
+# Minimum Crown Base cannot be negative. This is an artifact from approximations done by lidar.
+# The best guess here is to treat the negative values as zeroes though this may introduce bias.
+
+cleantheforest(forestry.all) -> cleaned.forest
+
+cleaned.forest |> dplyr::select(CONDITION, DBH, MBG_WIDTH, MBG_LENGTH, TBOX_L, TBOX_W, MAX_CROWN_HEIGHT, MAX_MEAN, MIN_CROWN_BASE, DTM_MEAN, PERIM) |> drop_na() |> relocate(CONDITION) -> forestry.droppednas
+
+clean.scaled <- cleaned.forest |>
+  mutate(across(where(is.numeric), ~ as.numeric(scale(.x))))
+
+imp <- mice(clean.scaled)
+```
+
+```{r}
+imputed.forest <- complete(imp)
+```
+
+```{r}
+imputed.forest |> summarise(across(everything(), ~ sum(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "column", values_to = "n_na") %>%
+  filter(n_na > 0)
+```
+
+```{r}
+nrow(imputed.forest |> 
+  dplyr::select(CONDITION, DBH, MBG_WIDTH, MBG_LENGTH, 
+                TBOX_L, TBOX_W, MAX_CROWN_HEIGHT, MAX_MEAN,
+                MIN_CROWN_BASE, DTM_MEAN, PERIM,
+                GENUS_NAME, SIDEWALK, WIRES, CURB, OWNERSHIP)) - nrow(imputed.forest |> 
+  dplyr::select(CONDITION, DBH, MBG_WIDTH, MBG_LENGTH, 
+                TBOX_L, TBOX_W, MAX_CROWN_HEIGHT, MAX_MEAN,
+                MIN_CROWN_BASE, DTM_MEAN, PERIM,
+                GENUS_NAME, SIDEWALK, WIRES, CURB, OWNERSHIP) |>
+    drop_na()
+  ) -> lostobservationcount
+
+lostobservationcount
+
+lostobservationcount / nrow(imputed.forest)
+```
+
+
+```{r}
+
+
+imputed.forest |> 
+  dplyr::select(CONDITION, DBH, MBG_WIDTH, MBG_LENGTH, 
+                TBOX_L, TBOX_W, MAX_CROWN_HEIGHT, MAX_MEAN,
+                MIN_CROWN_BASE, DTM_MEAN, PERIM,
+                GENUS_NAME, SIDEWALK, WIRES, CURB, OWNERSHIP) %>%
+  summarise(across(everything(), ~ sum(is.na(.x))))
+```
+
+```{r}
+# The columns that have no condition after our imputation
+# can't provide us with any training data to classify on.
+forest.ready <- imputed.forest %>%
+  dplyr::select(CONDITION, DBH, MBG_WIDTH, MBG_LENGTH, 
+                TBOX_L, TBOX_W, MAX_CROWN_HEIGHT, MAX_MEAN,
+                MIN_CROWN_BASE, DTM_MEAN, PERIM,
+                GENUS_NAME, SIDEWALK, WIRES, CURB, OWNERSHIP) %>% drop_na() %>%
+  mutate(SIDEWALK = fct_lump_min(SIDEWALK, min = 1000, other_level = "Other")) |> mutate(WIRES = fct_lump_min(WIRES, min = 1000, other_level = "Other")) |> mutate(CURB = fct_lump_min(CURB, min = 1000, other_level = "Other")) |> mutate(OWNERSHIP = fct_lump_min(OWNERSHIP, min = 1000, other_level = "Other")) |> mutate(across(where(is.factor) & !CONDITION, ~ fct_lump_min(.x, min = 1000)))
+```
+
+```{r}
+forest.ready %>% summarize(across(everything(), ~ sum(is.na(.x))))
+```
+
+```{r}
+colnames(forest.ready)
+```
+
+
+```{r, cache = TRUE}
+#| label: initial-lda-condition
+#| output: true
+#| echo: true
+set.seed(1234)
+
+train.ratio = 7/10
+
+sample.index = sample(x = 1:nrow(forest.ready), size = floor(train.ratio*nrow(forest.ready)))
+
+forest.ready.train <- forest.ready[sample.index,]
+forest.ready.test <- forest.ready[-sample.index,]
+
+lda.training.model <- lda(CONDITION ~ . - CONDITION, data = forest.ready.train)
+
+lda.predictions <- predict(lda.training.model, newdata = forest.ready.test)
+
+table(forest.ready.test$CONDITION,lda.predictions$class)
+```
+
+```{r}
+mean(lda.predictions$class != forest.ready.test$CONDITION)
+```
+
+```{r}
+# Leave one out cross validation
+lda.model.cv <- lda(CONDITION ~ . - CONDITION, data = forest.ready, CV=TRUE)
+
+mean(lda.model.cv$class != forest.ready$CONDITION)
+```
+
+```{r}
+forest.ready |> colnames()
+```
+
+
+```{r, cache = TRUE}
+#| label: initial-qda-condition
+#| output: true
+#| echo: true
+qda.training.model <- qda(CONDITION ~ . - CONDITION - GENUS_NAME - , data = forest.ready.train)
+
+qda.predictions <- predict(qda.training.model, newdata = forest.ready.test)
+
+table(forest.ready.test$CONDITION, qda.predictions$class)
+```
+
+```{r}
+mean(qda.predictions$class != forest.ready.test$CONDITION)
+```
+
+```{r}
+qda.model.cv <- qda(CONDITION ~ . - CONDITION - GENUS_NAME - CURB - WIRES - SIDEWALK - OWNERSHIP, data = forest.ready, CV=TRUE)
+
+mean(qda.model.cv$class == forest.ready$CONDITION)
+
+```
+
+```{r}
+base_drop <- c("CONDITION", "GENUS_NAME", "CURB", "WIRES", "SIDEWALK", "OWNERSHIP")
+preds <- setdiff(names(forest.ready), base_drop)
+
+n_fail <- sapply(preds, function(p) {
+  f <- reformulate(setdiff(preds, p), response = "CONDITION")
+  fit <- tryCatch(qda(f, data = forest.ready, CV = TRUE), error = function(e) NULL)
+  if (is.null(fit)) return(NA)
+  sum(is.na(fit$class))
+})
+
+sort(n_fail)
+```
+
+```{r}
+table(forest.ready$CONDITION)   # how many Good trees are there?
+
+good <- forest.ready[forest.ready$CONDITION == "Good", preds]
+round(cor(good), 2)             # look for |r| > 0.95
+summary(good)                   # look for extreme maxima
+```
+
+```{r}
+num_vars <- c("DBH","TBOX_L","TBOX_W","MBG_WIDTH","MBG_LENGTH","PERIM",
+              "MAX_CROWN_HEIGHT","MAX_MEAN","MIN_CROWN_BASE","DTM_MEAN")
+
+extreme <- apply(abs(forest.ready[num_vars]) > 10, 1, any)
+sum(extreme)
+forest.ready[extreme, c("CONDITION", num_vars)]
+```
+
+```{r}
+forest.clean <- forest.ready[!extreme, ]
+```
+
+```{r}
+qda.model.cv <- qda(CONDITION ~ DBH + MBG_LENGTH + TBOX_L + TBOX_W + MAX_CROWN_HEIGHT + MIN_CROWN_BASE + DTM_MEAN, data = forest.clean, CV = TRUE)
+
+sum(is.na(qda.model.cv$class))
+mean(qda.model.cv$class != forest.clean$CONDITION)
+```
+
+
